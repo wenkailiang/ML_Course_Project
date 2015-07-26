@@ -3,118 +3,90 @@ title: Practical Machine Learning Project - Quantified Self Movement Data Analys
   Report
 author: "Wenkai Liang"
 output:
-  pdf_document: default
   html_document:
     fig_height: 9
     fig_width: 9
+  pdf_document: default
 ---
 
-## Introduction  
-Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.  
-
-In this project, we will use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict the manner in which they did the exercise.  
-
-## Data Preprocessing  
-```{r, cache = T}
+```{r prep}
+library(ggplot2)
 library(caret)
-library(rpart)
-library(rpart.plot)
 library(randomForest)
-library(corrplot)
-```
-### Download the Data
-```{r, cache = T}
-trainUrl <-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
-testUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
-trainFile <- "./data/pml-training.csv"
-testFile  <- "./data/pml-testing.csv"
-if (!file.exists("./data")) {
-  dir.create("./data")
-}
-if (!file.exists(trainFile)) {
-  download.file(trainUrl, destfile=trainFile, method="curl")
-}
-if (!file.exists(testFile)) {
-  download.file(testUrl, destfile=testFile, method="curl")
-}
-```  
-### Read the Data
-After downloading the data from the data source, we can read the two csv files into two data frames.  
-```{r, cache = T}
-trainRaw <- read.csv("./data/training.csv")
-testRaw <- read.csv("./data/testing.csv")
-summary(trainRaw)
-summary(testRaw)
-```
-The training data set contains 19622 observations and 160 variables, while the testing data set contains 20 observations and 160 variables. The "classe" variable in the training set is the outcome to predict. 
-
-### Clean the data
-In this step, we will clean the data and get rid of observations with missing values as well as some meaningless variables.
-```{r, cache = T}
-sum(complete.cases(trainRaw))
-```
-First, we remove columns that contain NA missing values.
-```{r, cache = T}
-trainRaw <- trainRaw[, colSums(is.na(trainRaw)) == 0] 
-testRaw <- testRaw[, colSums(is.na(testRaw)) == 0] 
-```  
-Next, we get rid of some columns that do not contribute much to the accelerometer measurements.
-```{r, cache = T}
-classe <- trainRaw$classe
-trainRemove <- grepl("^X|timestamp|window", names(trainRaw))
-trainRaw <- trainRaw[, -trainRemove]
-trainCleaned <- trainRaw[, sapply(trainRaw, is.numeric)]
-trainCleaned$classe <- classe
-testRemove <- grepl("^X|timestamp|window", names(testRaw))
-testRaw <- testRaw[, -testRemove]
-testCleaned <- testRaw[, sapply(testRaw, is.numeric)]
-```
-Now, the cleaned training data set contains 19622 observations and 53 variables, while the testing data set contains 20 observations and 53 variables. The "classe" variable is still in the cleaned training set.
-
-### Slice the data
-Then, we can split the cleaned training set into a pure training data set (70%) and a validation data set (30%). We will use the validation data set to conduct cross validation in future steps.  
-```{r, cache = T}
-set.seed(22519) # For reproducibile purpose
-inTrain <- createDataPartition(trainCleaned$classe, p=0.70, list=F)
-trainData <- trainCleaned[inTrain, ]
-testData <- trainCleaned[-inTrain, ]
 ```
 
-## Data Modeling
-We fit a predictive model for activity recognition using **Random Forest** algorithm because it automatically selects important variables and is robust to correlated covariates & outliers in general. We will use **5-fold cross validation** when applying the algorithm.  
-```{r, cache = T}
-controlRf <- trainControl(method="cv", 5)
-modelRf <- train(classe ~ ., data=trainData, method="rf", trControl=controlRf, ntree=250)
-modelRf
-```
-Then, we estimate the performance of the model on the validation data set.  
-```{r, cache = T}
-predictRf <- predict(modelRf, testData)
-confusionMatrix(testData$classe, predictRf)
-```
-```{r, cache = T}
-accuracy <- postResample(predictRf, testData$classe)
-accuracy
-oose <- 1 - as.numeric(confusionMatrix(testData$classe, predictRf)$overall[1])
-oose
-```
-So, the estimated accuracy of the model is 99.42% and the estimated out-of-sample error is 0.58%.
+### Load data 
+* Load data.           
+* Remove near zero covariates and those with more than 80% missing values since these variables will not provide much power for prediction.       
+* Calculate correlations between each remaining feature to the response, `classe`. Use `spearman` rank based correlation because `classe` is a factor.                 
+* Plot the two features that have highest correlation with `classe` and color with `classe` to see if we can separate response based on these features.            
 
-## Predicting for Test Data Set
-Now, we apply the model to the original testing data set downloaded from the data source. We remove the `problem_id` column first.  
-```{r, cache = T}
-result <- predict(modelRf, testCleaned[, -length(names(testCleaned))])
-result
-```  
-
-## Appendix: Figures
-1. Correlation Matrix Visualization  
-```{r, cache = T}
-corrPlot <- cor(trainData[, -length(names(trainData))])
-corrplot(corrPlot, method="color")
+```{r data}
+# load data
+training <- read.csv("./data/training.csv", row.names = 1)
+testing <- read.csv("./data/testing.csv", row.names = 1)
+# remove near zero covariates
+nsv <- nearZeroVar(training, saveMetrics = T)
+training <- training[, !nsv$nzv]
+# remove variables with more than 80% missing values
+nav <- sapply(colnames(training), function(x) if(sum(is.na(training[, x])) > 0.8*nrow(training)){return(T)}else{return(F)})
+training <- training[, !nav]
+# calculate correlations
+cor <- abs(sapply(colnames(training[, -ncol(training)]), function(x) cor(as.numeric(training[, x]), as.numeric(training$classe), method = "spearman")))
 ```
-2. Decision Tree Visualization
-```{r, cache = T}
-treeModel <- rpart(classe ~ ., data=trainData, method="class")
-prp(treeModel) # fast plot
+```{r data_plot}
+# plot predictors 
+summary(cor)
+plot(training[, names(which.max(cor))], training[, names(which.max(cor[-which.max(cor)]))], col = training$classe, pch = 19, cex = 0.1, xlab = names(which.max(cor)), ylab = names(which.max(cor[-which.max(cor)])))
+```
+
+The training set has __19622__ samples and __58__ potential predictors after filtering.          
+
+There doesn't seem to be any strong predictors that correlates with `classe` well, so linear regression model is probably not suitable in this case. Boosting and random forests algorithms may generate more robust predictions for our data.         
+
+### Boosting model
+* Fit model with boosting algorithm and 10-fold cross validation to predict `classe` with all other predictors.    
+* Plot accuracy of this model on the scale `[0.9, 1]`.        
+
+```{r boost}
+boostFit <- train(classe ~ ., method = "gbm", data = training, verbose = F, trControl = trainControl(method = "cv", number = 10))
+```
+```{r boost_plot}
+boostFit
+plot(boostFit, ylim = c(0.9, 1))
+```
+
+The boosting algorithm generated a good model with __accuracy = 0.997__. 
+
+### Random forests model   
+* Fit model with random forests algorithm and 10-fold cross validation to predict `classe` with all other predictors.    
+* Plot accuracy of the model on the __same scale__ as boosting model.            
+
+```{r rf}
+set.seed(123)
+rfFit <- train(classe ~ ., method = "rf", data = training, importance = T, trControl = trainControl(method = "cv", number = 10))
+```
+```{r rf_plot}
+rfFit
+plot(rfFit, ylim = c(0.9, 1))
+```
+```{r rf_imp, echo = F}
+imp <- varImp(rfFit)$importance
+imp$max <- apply(imp, 1, max)
+imp <- imp[order(imp$max, decreasing = T), ]
+```
+
+The random forests algorithm generated a very accurate model with __accuracy close to 1__. Compared to boosting model, this model generally has better performance in terms of accuracy as we see from the plots.                     
+
+### Final model and prediction   
+* Comparing model accuracy of the two models generated, random forests and boosting, random forests model has overall better accuracy. So, I'll use this model for prediction.         
+* The final random forests model contains 500 trees with 40 variables tried at each split. The five most important predictors in this model are `r rownames(imp)[1:5]`.                 
+* Estimated __out of sample error rate__ for the random forests model is __0.04%__ as reported by the final model.            
+* Predict the test set and output results for automatic grader.     
+
+```{r prediction}
+# final model
+rfFit$finalModel
+# prediction
+(prediction <- as.character(predict(rfFit, testing)))
 ```
