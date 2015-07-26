@@ -3,6 +3,7 @@ title: Practical Machine Learning Project - Quantified Self Movement Data Analys
   Report
 author: "Wenkai Liang"
 output:
+  pdf_document: default
   html_document:
     fig_height: 9
     fig_width: 9
@@ -40,10 +41,10 @@ if (!file.exists(testFile)) {
 ### Read the Data
 After downloading the data from the data source, we can read the two csv files into two data frames.  
 ```{r, cache = T}
-trainRaw <- read.csv("./data/pml-training.csv")
-testRaw <- read.csv("./data/pml-testing.csv")
-dim(trainRaw)
-dim(testRaw)
+trainRaw <- read.csv("./data/training.csv")
+testRaw <- read.csv("./data/testing.csv")
+summary(trainRaw)
+summary(testRaw)
 ```
 The training data set contains 19622 observations and 160 variables, while the testing data set contains 20 observations and 160 variables. The "classe" variable in the training set is the outcome to predict. 
 
@@ -61,11 +62,11 @@ Next, we get rid of some columns that do not contribute much to the acceleromete
 ```{r, cache = T}
 classe <- trainRaw$classe
 trainRemove <- grepl("^X|timestamp|window", names(trainRaw))
-trainRaw <- trainRaw[, !trainRemove]
+trainRaw <- trainRaw[, -trainRemove]
 trainCleaned <- trainRaw[, sapply(trainRaw, is.numeric)]
 trainCleaned$classe <- classe
 testRemove <- grepl("^X|timestamp|window", names(testRaw))
-testRaw <- testRaw[, !testRemove]
+testRaw <- testRaw[, -testRemove]
 testCleaned <- testRaw[, sapply(testRaw, is.numeric)]
 ```
 Now, the cleaned training data set contains 19622 observations and 53 variables, while the testing data set contains 20 observations and 53 variables. The "classe" variable is still in the cleaned training set.
